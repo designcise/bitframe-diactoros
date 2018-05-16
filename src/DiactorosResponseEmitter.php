@@ -26,159 +26,159 @@ use BitFrame\Delegate\CallableMiddlewareTrait;
  */
 class DiactorosResponseEmitter implements MiddlewareInterface
 {
-	use CallableMiddlewareTrait;
-	
+    use CallableMiddlewareTrait;
+    
     /** @var EmitterInterface */
     private $emitter;
-	
-	/** @var bool */
-	private $forceEmit;
+    
+    /** @var bool */
+    private $forceEmit;
 
-	/**
-	 * @var EmitterInterface|null $emitter (optional)
-	 */
+    /**
+     * @var EmitterInterface|null $emitter (optional)
+     */
     public function __construct(?EmitterInterface $emitter = null)
     {
         $this->emitter = $emitter;
-		
-		$this->forceEmit = true;
+        
+        $this->forceEmit = true;
     }
-	
-	/**
+    
+    /**
      * {@inheritdoc}
-	 *
-	 * @throws \RuntimeException
+     *
+     * @throws \RuntimeException
      */
-	public function process(
-		ServerRequestInterface $request, 
-		RequestHandlerInterface $handler
-	): ResponseInterface 
-	{
-		// continue processing all requests
-		$response = $handler->handle($request);
-		
-		// case 1: headers not already sent?
-		// case 2: is output present in the output buffer
-		if (! ($headersSent = headers_sent()) && ob_get_level() === 0 && ob_get_length() === 0) {
-			// emit response!
-			$this->getEmitter()->emit($response);
-		} else {
-			// headers already sent, and not forcing emit...
-			if (! $this->forceEmit) {
-				throw new \RuntimeException('Unable to emit response; ' . 
-					(($headersSent) ? 
-						'headers already sent' : 'output has been emitted previously'
-					)
-				);
-			}
-			
-			// 1: emit headers
-			// 2: emit status line
-			if (! $headersSent) {
-				// emit headers
-				$statusCode = $response->getStatusCode();
+    public function process(
+        ServerRequestInterface $request, 
+        RequestHandlerInterface $handler
+    ): ResponseInterface 
+    {
+        // continue processing all requests
+        $response = $handler->handle($request);
+        
+        // case 1: headers not already sent?
+        // case 2: is output present in the output buffer
+        if (! ($headersSent = headers_sent()) && ob_get_level() === 0 && ob_get_length() === 0) {
+            // emit response!
+            $this->getEmitter()->emit($response);
+        } else {
+            // headers already sent, and not forcing emit...
+            if (! $this->forceEmit) {
+                throw new \RuntimeException('Unable to emit response; ' . 
+                    (($headersSent) ? 
+                        'headers already sent' : 'output has been emitted previously'
+                    )
+                );
+            }
+            
+            // 1: emit headers
+            // 2: emit status line
+            if (! $headersSent) {
+                // emit headers
+                $statusCode = $response->getStatusCode();
 
-				foreach ($response->getHeaders() as $header => $values) {
-					$name  = $this->filterHeader($header);
-					$first = $name === 'Set-Cookie' ? false : true;
-					foreach ($values as $value) {
-						header(sprintf(
-							'%s: %s',
-							$name,
-							$value
-						), $first, $statusCode);
-						$first = false;
-					}
-				}
+                foreach ($response->getHeaders() as $header => $values) {
+                    $name  = $this->filterHeader($header);
+                    $first = $name === 'Set-Cookie' ? false : true;
+                    foreach ($values as $value) {
+                        header(sprintf(
+                            '%s: %s',
+                            $name,
+                            $value
+                        ), $first, $statusCode);
+                        $first = false;
+                    }
+                }
 
-				// emit status line
-				$reasonPhrase = $response->getReasonPhrase();
+                // emit status line
+                $reasonPhrase = $response->getReasonPhrase();
 
-				header(sprintf(
-					'HTTP/%s %d%s',
-					$response->getProtocolVersion(),
-					$statusCode,
-					($reasonPhrase ? ' ' . $reasonPhrase : '')
-				), true, $statusCode);
-			}
-			
-			// 3: force-emit the response body
-			$body = $response->getBody();
+                header(sprintf(
+                    'HTTP/%s %d%s',
+                    $response->getProtocolVersion(),
+                    $statusCode,
+                    ($reasonPhrase ? ' ' . $reasonPhrase : '')
+                ), true, $statusCode);
+            }
+            
+            // 3: force-emit the response body
+            $body = $response->getBody();
 
-			if ($body->isSeekable()) {
-				$body->rewind();
-			}
+            if ($body->isSeekable()) {
+                $body->rewind();
+            }
 
-			// no readable data in stream?
-			if (! $body->isReadable()) {
-				echo $body;
-			} else {
-				// read data till end of stream is reached...
-				while (! $body->eof()) {
-					// read 8mb (max buffer length) of binary data at a time and output it
-					echo $body->read(1024 * 8);
-				}
-			}
-		}
+            // no readable data in stream?
+            if (! $body->isReadable()) {
+                echo $body;
+            } else {
+                // read data till end of stream is reached...
+                while (! $body->eof()) {
+                    // read 8mb (max buffer length) of binary data at a time and output it
+                    echo $body->read(1024 * 8);
+                }
+            }
+        }
 
         return $response;
-	}
+    }
 
-	/**
-	 * Get Emitter.
-	 *
-	 * @return EmitterInterface
-	 */
+    /**
+     * Get Emitter.
+     *
+     * @return EmitterInterface
+     */
     public function getEmitter(): EmitterInterface
     {
-		$this->emitter = $this->emitter ?? new \Zend\Diactoros\Response\SapiEmitter();
-		
+        $this->emitter = $this->emitter ?? new \Zend\Diactoros\Response\SapiEmitter();
+        
         return $this->emitter;
     }
 
-	/**
-	 * Set Emitter.
-	 *
-	 * @param EmitterInterface $emitter
-	 *
-	 * @return $this
-	 */
+    /**
+     * Set Emitter.
+     *
+     * @param EmitterInterface $emitter
+     *
+     * @return $this
+     */
     public function setEmitter(EmitterInterface $emitter): self
     {
         $this->emitter = $emitter;
-		
-		return $this;
+        
+        return $this;
     }
-	
-	
-	/**
-	 * Get flag that determines whether the response is going to forcefully emitted
-	 * when headers have already been sent.
-	 *
-	 * @return bool
-	 */
+    
+    
+    /**
+     * Get flag that determines whether the response is going to forcefully emitted
+     * when headers have already been sent.
+     *
+     * @return bool
+     */
     public function isForceEmit(): bool
     {
         return $this->forceEmit;
     }
-	
-	
-	/**
-	 * Set flag that determines whether the response is going to forcefully emitted
-	 * when headers have already been sent.
-	 * 
-	 * @param bool $forceEmit
-	 *
-	 * @return $this
-	 */
-	public function setForceEmit($forceEmit): self
-	{
-		$this->forceEmit = $forceEmit;
-		
-		return $this;
-	}
-	
-	/**
+    
+    
+    /**
+     * Set flag that determines whether the response is going to forcefully emitted
+     * when headers have already been sent.
+     * 
+     * @param bool $forceEmit
+     *
+     * @return $this
+     */
+    public function setForceEmit($forceEmit): self
+    {
+        $this->forceEmit = $forceEmit;
+        
+        return $this;
+    }
+    
+    /**
      * Filter a header name to wordcase
      *
      * @param string $header
